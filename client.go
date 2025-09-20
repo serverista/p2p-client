@@ -130,8 +130,13 @@ func (c *Client) createCanonicalHeader(method, path string, body []byte, nonce s
 	return authHeader, sig, nil
 }
 
-// Request sends a raw request given all the required params.
-func (c *Client) Request(ctx context.Context, method, path string, body []byte, nonce string, ts int64) (*ProxyResponse, error) {
+// RawRequest sends a raw request given the method, path, body and other args
+func (c *Client) RawRequest(ctx context.Context, method, path string, body []byte, nonce string, ts int64) (*ProxyResponse, error) {
+	return c.request(ctx, method, path, body, nonce, ts)
+}
+
+// request sends a raw request given all the required params.
+func (c *Client) request(ctx context.Context, method, path string, body []byte, nonce string, ts int64) (*ProxyResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, sendRequestTimeout)
 	defer cancel()
 
@@ -185,6 +190,8 @@ func (c *Client) Request(ctx context.Context, method, path string, body []byte, 
 
 	return &resp, nil
 }
+
+func (c *Client) Plans() {}
 
 func writeMessage(w io.Writer, v interface{}) error {
 	b, err := json.Marshal(v)
