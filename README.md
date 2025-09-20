@@ -48,7 +48,7 @@ func main() {
     proxyAddr := "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooW..."
 
     // Create client
-    client, err := p2pclient.NewClient(h, priv, proxyAddr)
+    client, err := p2pclient.New(h, priv, proxyAddr)
     if err != nil {
         panic(err)
     }
