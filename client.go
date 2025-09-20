@@ -191,7 +191,89 @@ func (c *Client) request(ctx context.Context, method, path string, body []byte, 
 	return &resp, nil
 }
 
-func (c *Client) Plans() {}
+// Plans returns a list of available plans.
+func (c *Client) Plans(ctx context.Context) ([]Plan, error) {
+	// public api, no need nounce and ts
+	resp, err := c.request(ctx, PlansEndpoint.Method, PlansEndpoint.Uri, nil, "n1", 0)
+	if err != nil {
+		return nil, err
+	}
+
+	var plans []Plan
+	err = json.Unmarshal(resp.Body, &plans)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal Plans: %w", err)
+	}
+
+	return plans, nil
+}
+
+// ListServices returns a list of available services.
+func (c *Client) ListServices(ctx context.Context, nonce string) ([]Service, error) {
+	resp, err := c.request(ctx, ListUserServicesEndpoint.Method, ListUserServicesEndpoint.Uri, nil, nonce, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+
+	var services []Service
+	err = json.Unmarshal(resp.Body, &services)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ListServices: %w", err)
+	}
+
+	return services, nil
+}
+
+type CreateServiceRequest struct {
+	PlanID       uint   `json:"plan_id"`
+	OS           string `json:"os"`
+	Amount       int    `json:"amount"`
+	SSHPublicKey string `json:"ssh_public_key"`
+}
+
+// CreateServices creates a new service
+func (c *Client) CreateServices(ctx context.Context, planID uint, os string, numberOfInstances int, sshPublicKey string, nonce string) ([]Service, error) {
+	if planID == 0 {
+		return nil, errors.New("plan id is required")
+	}
+
+	if os == "" {
+		return nil, errors.New("os is required")
+	}
+
+	if numberOfInstances <= 0 {
+		return nil, errors.New("number of instances must be greater than zero")
+	}
+
+	if sshPublicKey == "" {
+		return nil, errors.New("ssh public key is required")
+	}
+
+	req := CreateServiceRequest{
+		PlanID:       planID,
+		OS:           os,
+		Amount:       numberOfInstances,
+		SSHPublicKey: sshPublicKey,
+	}
+
+	bts, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal create service request: %w", err)
+	}
+
+	resp, err := c.request(ctx, CreateServicesEndpoint.Method, CreateServicesEndpoint.Uri, bts, nonce, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+
+	var services []Service
+	err = json.Unmarshal(resp.Body, &services)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CreateService: %w", err)
+	}
+
+	return services, nil
+}
 
 func writeMessage(w io.Writer, v interface{}) error {
 	b, err := json.Marshal(v)
