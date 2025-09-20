@@ -232,7 +232,7 @@ type CreateServiceRequest struct {
 }
 
 // CreateServices creates a new service
-func (c *Client) CreateServices(ctx context.Context, planID uint, os string, numberOfInstances int, sshPublicKey string, nonce string) ([]Service, error) {
+func (c *Client) CreateServices(ctx context.Context, planID uint, os Os, numberOfInstances int, sshPublicKey string, nonce string) ([]Service, error) {
 	if planID == 0 {
 		return nil, errors.New("plan id is required")
 	}
@@ -251,7 +251,7 @@ func (c *Client) CreateServices(ctx context.Context, planID uint, os string, num
 
 	req := CreateServiceRequest{
 		PlanID:       planID,
-		OS:           os,
+		OS:           string(os),
 		Amount:       numberOfInstances,
 		SSHPublicKey: sshPublicKey,
 	}

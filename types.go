@@ -13,6 +13,14 @@ const (
 	OtherPlan     PlanType = "Other"
 )
 
+type Os string
+
+const (
+	Ubuntu24_04 = "Ubuntu 24.04 LTS"
+	Ubuntu22_04 = "Ubuntu 22.04 LTS"
+	Debian11    = "Debian 11"
+)
+
 type Plan struct {
 	ID          uint            `json:"id"`
 	Name        string          `json:"name"`
