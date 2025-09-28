@@ -7,10 +7,55 @@ A lightweight Go client for communicating with a **p2p-gateway** over [libp2p](h
 - Sending `ProxyRequest` messages to a remote peer using libp2p streams.
 - Receiving and decoding `ProxyResponse` messages.
 
+## Canonical Header Protocol
+
+All requests must include an `Authorization` header that cryptographically proves the request’s origin and prevents tampering.
+
+### 1. Canonical Payload
+
+A deterministic payload string is constructed as follows:
+
+- **METHOD**: The HTTP-like method, uppercased (e.g., `GET`, `POST`).  
+- **PATH**: The request path (e.g., `/v1/resource`).  
+- **SHA256(BODY)**: A lowercase hex-encoded SHA-256 digest of the request body.  
+- **NONCE**: A unique client-generated string to prevent replay attacks.  
+- **TIMESTAMP**: Unix timestamp (in seconds) when the request was created.  
+
+### 2. Signature
+
+- The canonical payload is signed using the client’s **Ed25519 private key**.  
+- The resulting signature is encoded in **Base64**.  
+
+### 3. Authorization Header
+
+The final header is constructed as:
+
+Authorization: DID did:key:...;sig=<base64_signature>;ts=<timestamp>;nonce=<nonce>
+
+### 4. Verification Process
+
+On the **p2p-gateway**, the request is verified by:
+
+1. Reconstructing the canonical payload.  
+2. Extracting the DID from the header and resolving the public key.  
+3. Verifying the Ed25519 signature.  
+4. Validating the timestamp is within acceptable skew.  
+5. Checking that the nonce has not been reused.  
+
+If any step fails, the request is rejected.
+
+## Security Properties
+
+- **Integrity**: The signed payload ensures no tampering with method, path, body, or metadata.  
+- **Authentication**: Only the holder of the DID private key can generate valid signatures.  
+- **Replay Protection**: Timestamps and nonces ensure requests cannot be reused.  
+
+
 ---
 
 ## Features
 
+- **Canonical Request Signing**: Builds deterministic payloads for signature generation.  
 - **DID Support**: Automatically derives a DID from an Ed25519 public key.
 - **Signed Requests**: Canonical request signing using Ed25519 signatures.
 - **Proxy Communication**: Serialize, send, and receive requests/responses over libp2p streams.
