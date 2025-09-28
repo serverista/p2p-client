@@ -12,15 +12,27 @@ var (
 		Uri:    "/v1/plans",
 	}
 
-	// ListUserServicesEndpoint requires message signing with nonce and timestamp
+	// ListUserServicesEndpoint
 	ListUserServicesEndpoint = Endpoint{
 		Method: "GET",
 		Uri:    "/v1/services",
 	}
 
-	// CreateServicesEndpoint requires message signing with nonce and timestamp
+	// GetUserServiceEndpoint
+	GetUserServiceEndpoint = Endpoint{
+		Method: "GET",
+		Uri:    "/v1/services/%d",
+	}
+
+	// CreateServicesEndpoint
 	CreateServicesEndpoint = Endpoint{
 		Method: "POST",
 		Uri:    "/v1/services",
+	}
+
+	// ManageServiceEndpoint
+	ManageServiceEndpoint = Endpoint{
+		Method: "POST",
+		Uri:    "/v1/services/%d/management",
 	}
 )

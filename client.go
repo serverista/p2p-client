@@ -25,6 +25,12 @@ const ProtocolID = "/serverista-proxy/1.0.0"
 
 const sendRequestTimeout = 10 * time.Second
 
+const p2pAddr = "/dns/p2p.serverista.com/tcp/4001/p2p/12D3KooWSpCSXXhgy1cWpYYWj9LyxEQhJvZqwMGCcRPi2XDZ3TiM"
+
+var (
+	ErrNoPermissions = errors.New("no permission")
+)
+
 // ProxyRequest represents the payload to send to the p2p-gateway.
 type ProxyRequest struct {
 	Method  string            `json:"method"`
@@ -53,15 +59,14 @@ type Client struct {
 // New creates a new client given a libp2p host which will be used to connect and send a message to the remote protocol.
 // in the params you can use any ed25519 private key to sign the messages. This should be the private key that the DID
 // was derived from and entered in serverista IAM DID Key.
-// proxyAddr
-func New(h host.Host, privKey ed25519.PrivateKey, p2pGatewayAddr string) (*Client, error) {
+func New(h host.Host, privKey ed25519.PrivateKey) (*Client, error) {
 	pubKey := privKey.Public().(ed25519.PublicKey)
 	did, err := Ed25519PubKeyToDID(pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get DID from public key: %w", err)
 	}
 
-	maddr, err := ma.NewMultiaddr(p2pGatewayAddr)
+	maddr, err := ma.NewMultiaddr(p2pAddr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid peer multiaddr: %w", err)
 	}
@@ -74,7 +79,7 @@ func New(h host.Host, privKey ed25519.PrivateKey, p2pGatewayAddr string) (*Clien
 		host:           h,
 		privKey:        privKey,
 		did:            did,
-		p2pGatewayAddr: p2pGatewayAddr,
+		p2pGatewayAddr: p2pAddr,
 		addrInfo:       info,
 	}, nil
 }
@@ -82,6 +87,22 @@ func New(h host.Host, privKey ed25519.PrivateKey, p2pGatewayAddr string) (*Clien
 // DID returns the DID for this client.
 func (c *Client) DID() string {
 	return c.did
+}
+
+// SetGatewayAddr sets the gateway address.
+func (c *Client) SetGatewayAddr(addr string) error {
+	maddr, err := ma.NewMultiaddr(addr)
+	if err != nil {
+		return fmt.Errorf("invalid peer multiaddr: %w", err)
+	}
+	info, err := peer.AddrInfoFromP2pAddr(maddr)
+	if err != nil {
+		return fmt.Errorf("failed to parse peer addr info: %w", err)
+	}
+	c.addrInfo = info
+	c.p2pGatewayAddr = addr
+
+	return nil
 }
 
 // Ed25519PubKeyToDID gets the DID from a public key.
@@ -180,99 +201,45 @@ func (c *Client) request(ctx context.Context, method, path string, body []byte, 
 
 	// read response
 	var resp ProxyResponse
-	if err := readMessage(br, &resp); err != nil {
+	responseBody, err := readMessage(br)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if err := json.Unmarshal(responseBody, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	if resp.Error != "" {
 		return nil, errors.New(resp.Error)
 	}
 
+	// check if the body has error or errors
+	type errBody struct {
+		Error  string            `json:"error"`
+		Errors map[string]string `json:"errors"`
+	}
+
+	var apiResp errBody
+	if err := json.Unmarshal(resp.Body, &apiResp); err == nil {
+		if apiResp.Error == "insufficient permissions" {
+			return nil, ErrNoPermissions
+		} else if apiResp.Error != "" {
+			return nil, errors.New(apiResp.Error)
+		}
+
+		if len(apiResp.Errors) > 0 {
+			for k, v := range apiResp.Errors {
+				return nil, fmt.Errorf("%s %s", k, v)
+			}
+		}
+	}
+
+	if resp.Status >= 400 {
+		return nil, fmt.Errorf("response with status code: %d and body: %s", resp.Status, string(resp.Body))
+	}
+
 	return &resp, nil
-}
-
-// Plans returns a list of available plans.
-func (c *Client) Plans(ctx context.Context) ([]Plan, error) {
-	// public api, no need nounce and ts
-	resp, err := c.request(ctx, PlansEndpoint.Method, PlansEndpoint.Uri, nil, "n1", 0)
-	if err != nil {
-		return nil, err
-	}
-
-	var plans []Plan
-	err = json.Unmarshal(resp.Body, &plans)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal Plans: %w", err)
-	}
-
-	return plans, nil
-}
-
-// ListServices returns a list of available services.
-func (c *Client) ListServices(ctx context.Context, nonce string) ([]Service, error) {
-	resp, err := c.request(ctx, ListUserServicesEndpoint.Method, ListUserServicesEndpoint.Uri, nil, nonce, time.Now().Unix())
-	if err != nil {
-		return nil, err
-	}
-
-	var services []Service
-	err = json.Unmarshal(resp.Body, &services)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ListServices: %w", err)
-	}
-
-	return services, nil
-}
-
-type CreateServiceRequest struct {
-	PlanID       uint   `json:"plan_id"`
-	OS           string `json:"os"`
-	Amount       int    `json:"amount"`
-	SSHPublicKey string `json:"ssh_public_key"`
-}
-
-// CreateServices creates a new service
-func (c *Client) CreateServices(ctx context.Context, planID uint, os Os, numberOfInstances int, sshPublicKey string, nonce string) ([]Service, error) {
-	if planID == 0 {
-		return nil, errors.New("plan id is required")
-	}
-
-	if os == "" {
-		return nil, errors.New("os is required")
-	}
-
-	if numberOfInstances <= 0 {
-		return nil, errors.New("number of instances must be greater than zero")
-	}
-
-	if sshPublicKey == "" {
-		return nil, errors.New("ssh public key is required")
-	}
-
-	req := CreateServiceRequest{
-		PlanID:       planID,
-		OS:           string(os),
-		Amount:       numberOfInstances,
-		SSHPublicKey: sshPublicKey,
-	}
-
-	bts, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal create service request: %w", err)
-	}
-
-	resp, err := c.request(ctx, CreateServicesEndpoint.Method, CreateServicesEndpoint.Uri, bts, nonce, time.Now().Unix())
-	if err != nil {
-		return nil, err
-	}
-
-	var services []Service
-	err = json.Unmarshal(resp.Body, &services)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal CreateService: %w", err)
-	}
-
-	return services, nil
 }
 
 func writeMessage(w io.Writer, v interface{}) error {
@@ -289,18 +256,18 @@ func writeMessage(w io.Writer, v interface{}) error {
 	return err
 }
 
-func readMessage(r io.Reader, dst interface{}) error {
+func readMessage(r io.Reader) ([]byte, error) {
 	var lenbuf [4]byte
 	if _, err := io.ReadFull(r, lenbuf[:]); err != nil {
-		return err
+		return nil, err
 	}
 	l := binary.BigEndian.Uint32(lenbuf[:])
 	if l == 0 {
-		return fmt.Errorf("zero-length message")
+		return nil, fmt.Errorf("zero-length message")
 	}
 	data := make([]byte, l)
 	if _, err := io.ReadFull(r, data); err != nil {
-		return err
+		return nil, err
 	}
-	return json.Unmarshal(data, dst)
+	return data, nil
 }

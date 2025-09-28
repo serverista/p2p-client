@@ -61,7 +61,7 @@ func main() {
 
 ```go
 ctx := context.Background()
-resp, err := client.Request(ctx, "GET", "/v1/services", nil, "random-nonce", time.Now().Unix())
+resp, err := client.RawRequest(ctx, "GET", "/v1/services", nil, "random-nonce", time.Now().Unix())
 if err != nil {
     panic(err)
 }
