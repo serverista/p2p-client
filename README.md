@@ -34,7 +34,7 @@ Authorization: DID did:key:...;sig=<base64_signature>;ts=<timestamp>;nonce=<nonc
 
 ### 4. Verification Process
 
-On the **p2p-gateway**, the request is verified by:
+On the **Serverista API Gateway**, the request is verified by:
 
 1. Reconstructing the canonical payload.  
 2. Extracting the DID from the header and resolving the public key.  
